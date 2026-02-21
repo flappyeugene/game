@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Eugene</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Press Start 2P', cursive;
+            user-select: none;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 288px;
+            height: 512px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            overflow: hidden;
+            background-color: #70c5ce;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #score-board {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 36px;
+            z-index: 10;
+            text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+            pointer-events: none;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 20;
+            text-align: center;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 {
+            color: #fff;
+            font-size: 28px;
+            text-shadow: 3px 3px 0 #000;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        p.subtitle {
+            color: #fff;
+            font-size: 12px;
+            line-height: 1.8;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        /* Arcade Score Panel */
+        .score-panel {
+            background: #ded895;
+            border: 4px solid #543847;
+            border-radius: 10px;
+            padding: 20px;
+            width: 65%;
+            margin-bottom: 20px;
+            box-shadow: 0 6px 0 #543847;
+            position: relative;
+        }
+
+        .score-panel h2 { 
+            color: #e74c3c; 
+            font-size: 14px; 
+            margin: 0 0 10px 0; 
+            text-shadow: none; 
+        }
+
+        .score-panel p { 
+            color: #fff; 
+            font-size: 24px; 
+            margin: 0 0 15px 0; 
+            text-shadow: 2px 2px 0 #000; 
+        }
+
+        .score-panel p:last-child { margin-bottom: 0; }
+
+        #new-badge {
+            position: absolute;
+            top: 60%;
+            right: -10px;
+            background: #e74c3c;
+            color: white;
+            padding: 5px;
+            font-size: 10px;
+            border: 2px solid white;
+            transform: rotate(-15deg);
+            animation: pulse 0.5s infinite alternate;
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1) rotate(-15deg); }
+            to { transform: scale(1.15) rotate(-15deg); }
+        }
+
+        button.action-btn {
+            padding: 12px 20px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 16px;
+            cursor: pointer;
+            border: 3px solid #fff;
+            background: #2ecc71;
+            color: white;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0 #000;
+            transition: transform 0.1s ease;
+        }
+
+        button.action-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        #audio-toggle {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            z-index: 30;
+            font-size: 10px;
+            padding: 8px 12px;
+            background: #ecf0f1;
+            color: #2c3e50;
+            border: 2px solid #2c3e50;
+            cursor: pointer;
+            font-family: 'Press Start 2P', cursive;
+            box-shadow: 2px 2px 0 #000;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="288" height="512"></canvas>
+    <div id="score-board">0</div>
+    
+    <button id="audio-toggle">🔊 Mute</button>
+    
+    <!-- Start Screen -->
+    <div id="start-screen" class="screen">
+        <h1>FLAPPY<br>EUGENE</h1>
+        <p class="subtitle">Click or Space<br>to jump</p>
+    </div>
+    
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="screen hidden">
+        <h1>GAME OVER</h1>
+        <div class="score-panel">
+            <h2>SCORE</h2>
+            <p id="final-score">0</p>
+            <h2>BEST</h2>
+            <p id="best-score">0</p>
+            <div id="new-badge" class="hidden">NEW!</div>
+        </div>
+        <button id="restart-btn" class="action-btn">RETRY</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // --- GAME VARIABLES ---
+    let frames = 0, score = 0;
+    const states = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+    let currentState = states.START;
+    
+    // --- HIGH SCORE SYSTEM ---
+    let bestScore = parseInt(localStorage.getItem('flappyBestScore')) || 0;
+    let beatScoreMidGame = false;
+
+    // --- VISUAL EFFECTS ---
+    let flashAlpha = 0; 
+    let shakeFrames = 0;
+    let particles = [];
+    let confetti = [];
+    
+    // --- AUDIO & SFX ---
+    let isMuted = false;
+    let dieTimer;
+    
+    const sfx = {
+        flap: new Audio("https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/audio/wing.wav"),
+        score: new Audio("https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/audio/point.wav"),
+        hit: new Audio("https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/audio/hit.wav"),
+        die: new Audio("https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/audio/die.wav")
+    };
+
+    function playSFX(soundName) {
+        if (isMuted) return;
+        const sound = sfx[soundName];
+        if (sound) {
+            sound.currentTime = 0;
+            sound.play().catch(() => {});
+        }
+    }
+
+    // --- RETRO SYNTHESIZER ---
+    class RetroBGM {
+        constructor() {
+            this.ctx = null;
+            this.step = 0;
+            this.isPlaying = false;
+            this.muted = false;
+            this.notes = [
+                392.00, 493.88, 587.33, 783.99, 392.00, 493.88, 587.33, 783.99,
+                261.63, 329.63, 392.00, 523.25, 261.63, 329.63, 392.00, 523.25,
+                329.63, 392.00, 493.88, 659.25, 329.63, 392.00, 493.88, 659.25,
+                293.66, 369.99, 440.00, 587.33, 293.66, 369.99, 440.00, 587.33
+            ];
+        }
+        init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+        playNote() {
+            if (!this.isPlaying) return;
+            if (!this.muted) {
+                let osc = this.ctx.createOscillator();
+                let gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = this.notes[this.step % this.notes.length] / 2;
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+            this.step++;
+            this.timeout = setTimeout(() => this.playNote(), 130);
+        }
+        playVictoryJingle() {
+            if (this.muted) return;
+            const now = this.ctx.currentTime;
+            const victoryNotes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 Arpeggio
+            victoryNotes.forEach((freq, i) => {
+                let osc = this.ctx.createOscillator();
+                let gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = freq;
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now + i * 0.1);
+                gain.gain.setValueAtTime(0.05, now + i * 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+                osc.stop(now + i * 0.1 + 0.3);
+            });
+        }
+        start() {
+            this.init();
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            if (!this.isPlaying) { this.isPlaying = true; this.playNote(); }
+        }
+        stop() {
+            this.isPlaying = false;
+            clearTimeout(this.timeout);
+        }
+        setMute(state) { this.muted = state; }
+    }
+    const bgm = new RetroBGM();
+
+    // --- SPRITES LOAD ---
+    const spriteUrls = {
+        bg: "https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/background-day.png",
+        bird: "https://i.ibb.co/PvHh3BcW/ei-1771689731086-removebg-preview.png",
+        pipe: "https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/pipe-green.png",
+        base: "https://raw.githubusercontent.com/samuelcust/flappy-bird-assets/master/sprites/base.png"
+    };
+    const images = {};
+    for (let key in spriteUrls) {
+        images[key] = new Image();
+        images[key].src = spriteUrls[key];
+    }
+
+    // --- GAME ENTITIES ---
+    const bird = {
+        x: 50, y: 150, w: 34, h: 24,
+        velocity: 0, gravity: 0.35, jump: -5.5, rotation: 0,
+        
+        draw: function() {
+            if (images.bird.complete && images.bird.naturalHeight !== 0) {
+                ctx.save();
+                ctx.translate(this.x + this.w / 2, this.y + this.h / 2);
+                this.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 8, (this.velocity * 0.1)));
+                ctx.rotate(this.rotation);
+                ctx.drawImage(images.bird, -this.w / 2, -this.h / 2, this.w, this.h);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = "#f1c40f"; ctx.fillRect(this.x, this.y, this.w, this.h);
+            }
+        },
+        update: function() {
+            this.velocity += this.gravity;
+            this.y += this.velocity;
+            if (this.y + this.h >= canvas.height - 112) {
+                this.y = canvas.height - 112 - this.h;
+                triggerGameOver();
+            }
+            if (this.y <= 0) { this.y = 0; this.velocity = 0; }
+        },
+        flap: function() {
+            this.velocity = this.jump;
+            playSFX('flap');
+        }
+    };
+
+    const pipes = {
+        items: [], w: 52, h: 320, gap: 100, dx: 2,
+        
+        draw: function() {
+            for (let i = 0; i < this.items.length; i++) {
+                let p = this.items[i];
+                let topY = p.y;
+                let bottomY = p.y + this.h + this.gap;
+
+                if (images.pipe.complete && images.pipe.naturalHeight !== 0) {
+                    ctx.save(); ctx.translate(p.x + this.w / 2, topY + this.h / 2); ctx.rotate(Math.PI);
+                    ctx.drawImage(images.pipe, -this.w / 2, -this.h / 2, this.w, this.h); ctx.restore();
+                    ctx.drawImage(images.pipe, p.x, bottomY, this.w, this.h);
+                } else {
+                    ctx.fillStyle = "#2ecc71"; ctx.fillRect(p.x, topY, this.w, this.h); ctx.fillRect(p.x, bottomY, this.w, this.h);
+                }
+            }
+        },
+        update: function() {
+            if (frames % 100 === 0) {
+                this.items.push({ x: canvas.width, y: Math.floor(Math.random() * (this.h - 100)) - this.h + 50, passed: false });
+            }
+
+            for (let i = 0; i < this.items.length; i++) {
+                let p = this.items[i];
+                let bottomPipeY = p.y + this.h + this.gap;
+                let offset = 4; 
+
+                // Collision
+                if (bird.x + bird.w - offset > p.x && bird.x + offset < p.x + this.w && 
+                   (bird.y + offset < p.y + this.h || bird.y + bird.h - offset > bottomPipeY)) {
+                    triggerGameOver();
+                }
+
+                p.x -= this.dx;
+
+                // Score Point
+                if (p.x + this.w < bird.x && !p.passed) {
+                    score++; p.passed = true;
+                    document.getElementById("score-board").innerText = score;
+                    playSFX('score');
+                    
+                    // High Score Check Mid-Game
+                    if (score > bestScore) {
+                        if (bestScore > 0 && !beatScoreMidGame) {
+                            beatScoreMidGame = true;
+                            bgm.playVictoryJingle();
+                            particles.push({ text: "NEW BEST!", x: canvas.width/2, y: canvas.height/2, alpha: 1.0, dy: -1.5, color: "#f1c40f" });
+                        }
+                        bestScore = score;
+                        localStorage.setItem('flappyBestScore', bestScore);
+                    } else {
+                        particles.push({ text: "+1", x: p.x + this.w + 10, y: p.y + this.h + (this.gap / 2), alpha: 1.0, dy: -1.5, color: "#fff" });
+                    }
+                }
+
+                if (p.x + this.w < 0) { this.items.shift(); i--; }
+            }
+        },
+        reset: function() { this.items = []; }
+    };
+
+    const background = {
+        draw: function() {
+            if (images.bg.complete && images.bg.naturalHeight !== 0) {
+                ctx.drawImage(images.bg, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = "#70c5ce"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+    };
+
+    const ground = {
+        x: 0, y: canvas.height - 112, w: 336, h: 112, dx: 2,
+        draw: function() {
+            if (images.base.complete && images.base.naturalHeight !== 0) {
+                ctx.drawImage(images.base, this.x, this.y, this.w, this.h);
+                ctx.drawImage(images.base, this.x + this.w, this.y, this.w, this.h);
+            } else {
+                ctx.fillStyle = "#ded895"; ctx.fillRect(0, this.y, canvas.width, this.h);
+            }
+        },
+        update: function() {
+            if (currentState === states.PLAYING) {
+                this.x -= this.dx;
+                if (this.x <= -this.w) this.x = 0;
+            }
+        }
+    };
+
+    // --- GAME LOGIC ---
+    function spawnConfetti() {
+        const colors = ['#f1c40f', '#e74c3c', '#3498db', '#2ecc71', '#9b59b6'];
+        for (let i = 0; i < 60; i++) {
+            confetti.push({
+                x: canvas.width / 2,
+                y: canvas.height / 2 + 50,
+                dx: (Math.random() - 0.5) * 12,
+                dy: (Math.random() - 1) * 12,
+                size: Math.random() * 6 + 3,
+                color: colors[Math.floor(Math.random() * colors.length)]
+            });
+        }
+    }
+
+    function showUI() {
+        document.getElementById("start-screen").classList.add("hidden");
+        document.getElementById("game-over-screen").classList.add("hidden");
+        document.getElementById("score-board").classList.remove("hidden");
+        document.getElementById("new-badge").classList.add("hidden");
+        
+        if (currentState === states.START) {
+            document.getElementById("start-screen").classList.remove("hidden");
+            document.getElementById("score-board").classList.add("hidden");
+        } else if (currentState === states.GAMEOVER) {
+            document.getElementById("game-over-screen").classList.remove("hidden");
+            document.getElementById("final-score").innerText = score;
+            document.getElementById("best-score").innerText = bestScore;
+            document.getElementById("score-board").classList.add("hidden");
+
+            if (beatScoreMidGame) {
+                document.getElementById("new-badge").classList.remove("hidden");
+            }
+        }
+    }
+
+    function triggerGameOver() {
+        if (currentState === states.PLAYING) {
+            currentState = states.GAMEOVER;
+            flashAlpha = 1.0;     
+            shakeFrames = 15;     
+            bgm.stop();           
+            
+            playSFX('hit');
+            
+            if (beatScoreMidGame) {
+                spawnConfetti();
+                // Play victory sound instead of sad die sound if score was beaten
+                setTimeout(() => bgm.playVictoryJingle(), 300);
+            } else {
+                dieTimer = setTimeout(() => playSFX('die'), 400); 
+            }
+            
+            showUI();
+        }
+    }
+
+    function resetGame() {
+        bird.y = 150; bird.velocity = 0; bird.rotation = 0;
+        pipes.reset(); particles = []; confetti = [];
+        score = 0; frames = 0; flashAlpha = 0; shakeFrames = 0;
+        beatScoreMidGame = false;
+        clearTimeout(dieTimer);
+        document.getElementById("score-board").innerText = score;
+    }
+
+    // --- MAIN RENDER LOOP ---
+    function gameLoop() {
+        ctx.save();
+        if (shakeFrames > 0) {
+            let dx = (Math.random() - 0.5) * 10;
+            let dy = (Math.random() - 0.5) * 10;
+            ctx.translate(dx, dy);
+            shakeFrames--;
+        }
+
+        background.draw();
+        
+        if (currentState === states.PLAYING) {
+            pipes.update(); bird.update(); ground.update(); frames++;
+        } else if (currentState === states.GAMEOVER) {
+            if (bird.y + bird.h < canvas.height - 112) {
+                bird.velocity += bird.gravity; bird.y += bird.velocity; bird.rotation = Math.PI / 2;
+            } else {
+                bird.y = canvas.height - 112 - bird.h;
+            }
+        }
+        
+        pipes.draw();
+        
+        // Render Particles (Text)
+        particles.forEach((pt, i) => {
+            ctx.globalAlpha = pt.alpha;
+            ctx.fillStyle = pt.color;
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 4;
+            ctx.font = pt.text === "NEW BEST!" ? "18px 'Press Start 2P'" : "20px 'Press Start 2P'";
+            ctx.textAlign = "center";
+            ctx.strokeText(pt.text, pt.x, pt.y);
+            ctx.fillText(pt.text, pt.x, pt.y);
+            ctx.textAlign = "left"; 
+
+            if (currentState === states.PLAYING) {
+                pt.y += pt.dy; pt.alpha -= 0.02;
+            }
+            if (pt.alpha <= 0) particles.splice(i, 1);
+        });
+        ctx.globalAlpha = 1.0;
+
+        ground.draw();
+        bird.draw();
+        
+        // Render Confetti on Game Over
+        if (currentState === states.GAMEOVER && confetti.length > 0) {
+            confetti.forEach(c => {
+                c.x += c.dx;
+                c.y += c.dy;
+                c.dy += 0.4; // Gravity
+                ctx.fillStyle = c.color;
+                ctx.fillRect(c.x, c.y, c.size, c.size);
+            });
+        }
+
+        // Render Screen Flash
+        if (flashAlpha > 0) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            flashAlpha -= 0.05;
+        }
+
+        ctx.restore(); 
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- INPUT CONTROLLERS ---
+    function control(e) {
+        if (e.type === 'keydown' && e.code !== 'Space') return;
+        if (e.target.id === 'restart-btn' || e.target.id === 'audio-toggle') return;
+
+        bgm.init(); // Initialize audio context upon first user gesture
+
+        if (e.type === 'touchstart' || e.code === 'Space') e.preventDefault();
+        
+        if (currentState === states.START) {
+            currentState = states.PLAYING;
+            showUI();
+            bird.flap();
+            bgm.start();
+        } else if (currentState === states.PLAYING) {
+            bird.flap();
+        }
+    }
+
+    // Event Listeners
+    window.addEventListener("keydown", control);
+    window.addEventListener("mousedown", control);
+    window.addEventListener("touchstart", control, { passive: false });
+
+    document.getElementById("restart-btn").addEventListener("click", () => {
+        resetGame();
+        currentState = states.START;
+        showUI();
+    });
+
+    document.getElementById("audio-toggle").addEventListener("click", (e) => {
+        isMuted = !isMuted;
+        e.target.innerText = isMuted ? "🔇 Unmute" : "🔊 Mute";
+        bgm.setMute(isMuted);
+    });
+
+    // Boot
+    resetGame();
+    showUI();
+    gameLoop();
+</script>
+</body>
+</html>
